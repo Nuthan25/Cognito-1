@@ -1,0 +1,125 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  TestSam
+
+  Sample SAM Template for TestSam
+
+Parameters:
+  TestUserPool:
+    Type: String
+    Description: 'Name of the Cognito User Pool'
+
+  TestAppClient:
+    Type: String
+    Description: 'Name of the Cognito App Client'
+
+Globals:
+  Function:
+    Timeout: 3
+    MemorySize: 128
+
+    Tracing: Active
+  Api:
+    TracingEnabled: true
+
+Resources:
+  HelloWorldFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: hello_world/
+      Handler: app.lambda_handler
+      Runtime: python3.9
+      Architectures:
+      - x86_64
+      Events:
+        MyApi:
+          Type: Api
+          Properties:
+            Path: /hello
+            Method: get
+
+  MyApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      DefinitionBody:
+        swagger: '2.0'
+        info:
+          title: Hello World API
+          version: '1.0'
+        paths:
+          /hello:
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HelloWorldFunction.Arn}/invocations"
+              responses: { }
+              security:
+                - MyApiKey: []
+
+  MyUserPool:
+    Type: 'AWS::Cognito::UserPool'
+    Properties:
+      UserPoolName: !Ref TestUserPool
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+      Schema:
+        - AttributeDataType: String
+          Name: email
+          Required: true
+      UsernameAttributes:
+        - email
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_LINK
+
+  MyUserPoolClient:
+    Type: 'AWS::Cognito::UserPoolClient'
+    Properties:
+      ClientName: !Ref TestAppClient
+      GenerateSecret: false
+      UserPoolId: !Ref MyUserPool
+
+  MyAuthorizer:
+    Type: 'AWS::ApiGateway::Authorizer'
+    Properties:
+      Name: CognitoAuthorizer
+      IdentitySource: method.request.header.Authorization
+      RestApiId: !Ref MyApi
+      Type: COGNITO_USER_POOLS
+      ProviderARNs:
+        - !Sub 'arn:aws:cognito-idp:${AWS::Region}:746454863131:userpool/${MyUserPool}'
+
+  MyApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Name: MyApiKey
+      Enabled: true
+
+
+  MyUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: MyUsagePlan
+      ApiStages:
+        - ApiId: !Ref MyApi
+          Stage: 'Prod'
+      Quota:
+        Limit: 10000
+        Offset: 1
+        Period: MONTH
+      Throttle:
+        BurstLimit: 5
+        RateLimit: 10
+
+
+
+
+
+
+
+
